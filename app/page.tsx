@@ -1,103 +1,285 @@
-import Image from "next/image";
+// ai‑consultant‑frontend/app/page.tsx
+"use client";
+
+import React, {
+  useState,
+  FormEvent,
+  ChangeEvent,
+  useEffect,
+} from "react";
+
+// Shape of the response from /consult or /deep_dive
+interface ResponseData {
+  answer: string;
+  report?: string;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              app/page.tsx
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  // ------------------------
+  // (C) Standard Consultation
+  // ------------------------
+  const [question, setQuestion] = useState<string>("");
+  const [industry, setIndustry] = useState<string>("Automotive");
+  const [role, setRole] = useState<string>("general");
+  const [response, setResponse] = useState<ResponseData | null>(null);
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    setLoading(true);
+    setResponse(null);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        "https://ai-systems-backend-2.onrender.com/consult",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_question: question,
+            industry,
+            role,
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data: ResponseData = await res.json();
+      setResponse(data);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Error connecting to AI system for consultation.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ------------------------
+  // (D) Deep Dive Analysis
+  // ------------------------
+  const [systemType, setSystemType] = useState<string>("embedded");
+  const [specsFilename, setSpecsFilename] = useState<string>("");
+  const [availableSpecs, setAvailableSpecs] = useState<string[]>([]);
+  const [fileStatus, setFileStatus] = useState<string>("No file chosen");
+
+  useEffect(() => {
+    // load list of specs
+    fetch("https://ai-systems-backend-2.onrender.com/list_specs")
+      .then((r) => r.json())
+      .then((list: string[]) => setAvailableSpecs(list))
+      .catch((e) => console.error("list_specs error", e));
+  }, []);
+
+  const handleFileUpload = async (e: ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setLoading(true);
+    setError(null);
+    setResponse(null);
+
+    try {
+      const form = new FormData();
+      form.append("file", file);
+
+      const r1 = await fetch(
+        "https://ai-systems-backend-2.onrender.com/upload_specs",
+        { method: "POST", body: form }
+      );
+      if (!r1.ok) throw new Error(`Upload ${r1.status}`);
+      const info = await r1.json();
+      alert(`✅ Uploaded: ${info.filename}`);
+      setSpecsFilename(info.filename);
+
+      // refresh dropdown
+      const r2 = await fetch(
+        "https://ai-systems-backend-2.onrender.com/list_specs"
+      );
+      const list: string[] = await r2.json();
+      setAvailableSpecs(list);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Failed to upload specs file.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleFileSelection = (fname: string) => {
+    setSpecsFilename(fname);
+    setFileStatus(fname ? "✅ File selected" : "No file chosen");
+  };
+
+  const handleDeepDive = async () => {
+    if (!specsFilename) {
+      alert("❌ Please select or upload a specs file first.");
+      return;
+    }
+
+    setLoading(true);
+    setResponse(null);
+    setError(null);
+
+    try {
+      const res = await fetch(
+        "https://ai-systems-backend-2.onrender.com/deep_dive",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user_question: question,
+            industry,
+            system_type: systemType,
+            specs_filename: specsFilename,
+          }),
+        }
+      );
+      if (!res.ok) throw new Error(`Deep Dive ${res.status}`);
+      const data: ResponseData = await res.json();
+      setResponse(data);
+    } catch (err) {
+      console.error(err);
+      setError("❌ Error running deep dive.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // ------------------------
+  // Render
+  // ------------------------
+  return (
+    <div className="min-h-screen p-8 flex flex-col items-center space-y-8">
+      <h1 className="text-2xl font-bold">AI Systems Engineer</h1>
+
+      {/* Standard Consultation */}
+      <form
+        onSubmit={handleSubmit}
+        className="w-full max-w-md p-4 border rounded space-y-4"
+      >
+        <h2 className="text-lg font-semibold">Standard Consultation</h2>
+        <label className="block">
+          <span>🔍 Question:</span>
+          <input
+            type="text"
+            value={question}
+            onChange={(e) => setQuestion(e.target.value)}
+            required
+            className="w-full p-2 border rounded"
+            placeholder="Enter your question..."
+          />
+        </label>
+        <label className="block">
+          <span>🏭 Industry:</span>
+          <select
+            value={industry}
+            onChange={(e) => setIndustry(e.target.value)}
+            className="w-full p-2 border rounded"
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            <option>Automotive</option>
+            <option>Aerospace</option>
+            <option>Healthcare</option>
+            <option>Energy</option>
+            <option>Manufacturing</option>
+            <option>IT</option>
+          </select>
+        </label>
+        <label className="block">
+          <span>🧩 Role:</span>
+          <select
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+            className="w-full p-2 border rounded"
           >
-            Read our docs
-          </a>
+            <option value="general">General</option>
+            <option value="embedded">Embedded</option>
+            <option value="cloud">Cloud</option>
+            <option value="manufacturing">Manufacturing</option>
+            <option value="security">Security</option>
+          </select>
+        </label>
+        <button
+          type="submit"
+          disabled={loading}
+          className="w-full p-2 bg-blue-600 text-white rounded hover:bg-blue-700"
+        >
+          {loading ? "⏳ Consulting..." : "Get AI Response"}
+        </button>
+      </form>
+
+      {/* Deep Dive */}
+      <div className="w-full max-w-md p-4 border rounded space-y-4">
+        <h2 className="text-lg font-semibold">Deep Dive Analysis</h2>
+        <label className="block">
+          <span>📄 Select Specs:</span>
+          <select
+            value={specsFilename}
+            onChange={(e) => handleFileSelection(e.target.value)}
+            className="w-full p-2 border rounded"
+          >
+            <option value="">-- choose --</option>
+            {availableSpecs.map((f) => (
+              <option key={f} value={f}>
+                {f}
+              </option>
+            ))}
+          </select>
+        </label>
+        <p className="text-sm">{fileStatus}</p>
+        <label className="block">
+          <span>📁 Or Upload Specs File:</span>
+          <input
+            type="file"
+            onChange={handleFileUpload}
+            className="w-full p-2 border rounded"
+          />
+        </label>
+        <label className="block">
+          <span>🔧 System Type:</span>
+          <select
+            value={systemType}
+            onChange={(e) => setSystemType(e.target.value)}
+            className="w-full p-2 border rounded"
+          >
+            <option value="embedded">Embedded</option>
+            <option value="cloud">Cloud</option>
+            <option value="manufacturing">Manufacturing</option>
+          </select>
+        </label>
+        <button
+          onClick={handleDeepDive}
+          disabled={loading}
+          className="w-full p-2 bg-green-600 text-white rounded hover:bg-green-700"
+        >
+          {loading ? "⏳ Deep Diving..." : "Perform Deep Dive"}
+        </button>
+      </div>
+
+      {/* Loading / Error */}
+      {loading && <p>⏳ Processing...</p>}
+      {error && <p className="text-red-600">{error}</p>}
+
+      {/* AI Response */}
+      {response && (
+        <div className="w-full max-w-md p-4 border rounded bg-gray-100">
+          <h3 className="font-semibold">✅ AI Response:</h3>
+          <pre className="whitespace-pre-wrap">{response.answer}</pre>
+          {response.report && (
+            <p className="mt-2">
+              📄{" "}
+              <a
+                href={`https://ai-systems-backend-2.onrender.com/reports/${response.report}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline"
+              >
+                Download AI Report
+              </a>
+            </p>
+          )}
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+      )}
     </div>
   );
 }
